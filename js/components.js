@@ -90,6 +90,9 @@ const ComponentLibrary = (() => {
                 href: '',
                 width: 100,
                 align: 'center',
+                enableLazyLoad: false,
+                placeholderSrc: '',
+                excludeFromLazyLoad: false,
                 paddingTop: 12,
                 paddingBottom: 12,
                 paddingLeft: 20,
@@ -104,6 +107,11 @@ const ComponentLibrary = (() => {
                     { value: 'left', label: '左对齐' },
                     { value: 'center', label: '居中' },
                     { value: 'right', label: '右对齐' }
+                ]},
+                { type: 'group', label: '懒加载', fields: [
+                    { key: 'enableLazyLoad', label: '启用懒加载', type: 'checkbox' },
+                    { key: 'placeholderSrc', label: '占位图地址', type: 'text', showWhen: { field: 'enableLazyLoad', value: true } },
+                    { key: 'excludeFromLazyLoad', label: '排除懒加载（追踪像素等立即加载）', type: 'checkbox' }
                 ]},
                 { type: 'group', label: '内边距', fields: [
                     { key: 'paddingTop', label: '上', type: 'number' },

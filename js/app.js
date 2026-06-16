@@ -590,20 +590,20 @@ const App = (() => {
                     '<div style="font-size:12px;color:#6b7280;margin-bottom:6px;font-weight:600;">' + field.label + '</div>' +
                     '<div class="form-row">';
                 field.fields.forEach(function(subField) {
-                    html += renderFormField(subField, block.data[subField.key]);
+                    html += renderFormField(subField, block.data[subField.key], block.data);
                 });
                 html += '</div></div>';
             } else {
-                html += renderFormField(field, block.data[field.key]);
+                html += renderFormField(field, block.data[field.key], block.data);
             }
         });
 
         container.innerHTML = html;
 
         if (info.parentBlockId && info.colId) {
-            bindFieldEvents(container, block.id, info.parentBlockId, info.colId);
+            bindFieldEvents(container, block.id, info.parentBlockId, info.colId, block.data);
         } else {
-            bindFieldEvents(container, block.id, null, null);
+            bindFieldEvents(container, block.id, null, null, block.data);
         }
     }
 
@@ -640,7 +640,14 @@ const App = (() => {
             '</div>';
     }
 
-    function renderFormField(field, value) {
+    function renderFormField(field, value, data) {
+        if (field.showWhen && data) {
+            var conditionValue = data[field.showWhen.field];
+            if (conditionValue !== field.showWhen.value) {
+                return '';
+            }
+        }
+
         var inputId = 'field-' + field.key;
         switch (field.type) {
             case 'text':
@@ -668,43 +675,62 @@ const App = (() => {
                     '<label for="' + inputId + '">' + field.label + '</label>' +
                     '<input type="color" id="' + inputId + '" data-field="' + field.key + '" value="' + (value || '#000000') + '">' +
                 '</div>';
+            case 'checkbox':
+                return '<div class="form-group form-group-checkbox">' +
+                    '<label class="checkbox-label">' +
+                        '<input type="checkbox" id="' + inputId + '" data-field="' + field.key + '" ' + (value ? 'checked' : '') + '>' +
+                        '<span>' + field.label + '</span>' +
+                    '</label>' +
+                '</div>';
             default:
                 return '';
         }
     }
 
-    function bindFieldEvents(container, blockId, parentBlockId, colId) {
+    function bindFieldEvents(container, blockId, parentBlockId, colId, blockData) {
         container.querySelectorAll('[data-field]').forEach(function(input) {
             var field = input.dataset.field;
 
-            input.addEventListener('input', function(e) {
-                var value = e.target.value;
-                if (input.type === 'number') {
-                    value = parseFloat(value) || 0;
-                }
-
-                if (parentBlockId && colId) {
-                    LayoutManager.updateColumnBlock(parentBlockId, colId, blockId, {});
-                    LayoutManager.updateColumnBlock(parentBlockId, colId, blockId, { [field]: value });
-                } else {
-                    LayoutManager.updateBlock(blockId, { [field]: value });
-                }
-            });
-
-            if (input.tagName === 'SELECT') {
+            if (input.type === 'checkbox') {
                 input.addEventListener('change', function(e) {
-                    var value = e.target.value;
-                    if (!isNaN(parseFloat(value)) && isFinite(value)) {
-                        value = parseFloat(value);
+                    var value = e.target.checked;
+                    if (parentBlockId && colId) {
+                        LayoutManager.updateColumnBlock(parentBlockId, colId, blockId, { [field]: value });
+                    } else {
+                        LayoutManager.updateBlock(blockId, { [field]: value });
                     }
-                    if (field === 'columns' && !parentBlockId) {
-                        LayoutManager.handleColumnCountChange(blockId, value);
-                    } else if (parentBlockId && colId) {
+                    renderProperties();
+                });
+            } else {
+                input.addEventListener('input', function(e) {
+                    var value = e.target.value;
+                    if (input.type === 'number') {
+                        value = parseFloat(value) || 0;
+                    }
+
+                    if (parentBlockId && colId) {
+                        LayoutManager.updateColumnBlock(parentBlockId, colId, blockId, {});
                         LayoutManager.updateColumnBlock(parentBlockId, colId, blockId, { [field]: value });
                     } else {
                         LayoutManager.updateBlock(blockId, { [field]: value });
                     }
                 });
+
+                if (input.tagName === 'SELECT') {
+                    input.addEventListener('change', function(e) {
+                        var value = e.target.value;
+                        if (!isNaN(parseFloat(value)) && isFinite(value)) {
+                            value = parseFloat(value);
+                        }
+                        if (field === 'columns' && !parentBlockId) {
+                            LayoutManager.handleColumnCountChange(blockId, value);
+                        } else if (parentBlockId && colId) {
+                            LayoutManager.updateColumnBlock(parentBlockId, colId, blockId, { [field]: value });
+                        } else {
+                            LayoutManager.updateBlock(blockId, { [field]: value });
+                        }
+                    });
+                }
             }
         });
     }

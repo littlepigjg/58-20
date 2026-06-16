@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>懒加载功能测试</title>
+    <style>
+        body { font-family: -apple-system, sans-serif; padding: 20px; background: #f5f5f5; }
+        .test-case { background: white; padding: 15px; margin: 10px 0; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        .test-title { font-weight: bold; margin-bottom: 10px; color: #333; }
+        .result { background: #f9f9f9; padding: 10px; border-radius: 4px; margin-top: 10px; font-family: monospace; font-size: 12px; white-space: pre-wrap; word-break: break-all; }
+        .pass { color: #10b981; }
+        .fail { color: #ef4444; }
+    </style>
+</head>
+<body>
+    <h2>懒加载功能测试</h2>
+    <div id="test-results"></div>
+
+    <script src="js/templateEngine.js"></script>
+    <script>
+        const results = document.getElementById('test-results');
+
+        function runTest(name, fn) {
+            const div = document.createElement('div');
+            div.className = 'test-case';
+            try {
+                const result = fn();
+                div.innerHTML = '<div class="test-title">' + name + ' <span class="pass">✓ 通过</span></div>';
+                div.innerHTML += '<div class="result">' + (typeof result === 'string' ? result.replace(/</g, '&lt;') : JSON.stringify(result, null, 2)) + '</div>';
+            } catch (e) {
+                div.innerHTML = '<div class="test-title">' + name + ' <span class="fail">✗ 失败: ' + e.message + '</span></div>';
+            }
+            results.appendChild(div);
+        }
+
+        runTest('1. 默认占位图是否存在', function() {
+            const ph = TemplateEngine.getDefaultPlaceholder();
+            if (!ph || !ph.startsWith('data:image/svg+xml')) {
+                throw new Error('默认占位图不存在或格式不正确');
+            }
+            return ph.substring(0, 100) + '... (长度: ' + ph.length + ')';
+        });
+
+        runTest('2. 懒加载脚本是否存在', function() {
+            const script = TemplateEngine.getLazyLoadScript();
+            if (!script || script.length < 100) {
+                throw new Error('懒加载脚本不存在或太短');
+            }
+            return '脚本长度: ' + script.length + ' 字符';
+        });
+
+        runTest('3. 普通图片渲染（不启用懒加载）', function() {
+            const block = {
+                type: 'image',
+                data: {
+                    src: 'https://example.com/image.jpg',
+                    alt: '测试图片',
+                    width: 100,
+                    align: 'center',
+                    enableLazyLoad: false,
+                    placeholderSrc: '',
+                    excludeFromLazyLoad: false,
+                    paddingTop: 12, paddingBottom: 12, paddingLeft: 20, paddingRight: 20
+                }
+            };
+            const html = TemplateEngine.renderBlock(block);
+            if (html.includes('data-src')) {
+                throw new Error('不应该包含 data-src 属性');
+            }
+            if (html.includes('loading="lazy"')) {
+                throw new Error('不应该包含 loading="lazy" 属性');
+            }
+            if (!html.includes('src="https://example.com/image.jpg"')) {
+                throw new Error('应该包含真实 src');
+            }
+            return html;
+        });
+
+        runTest('4. 懒加载图片渲染', function() {
+            const block = {
+                type: 'image',
+                data: {
+                    src: 'https://example.com/lazy-image.jpg',
+                    alt: '懒加载图片',
+                    width: 100,
+                    align: 'center',
+                    enableLazyLoad: true,
+                    placeholderSrc: '',
+                    excludeFromLazyLoad: false,
+                    paddingTop: 12, paddingBottom: 12, paddingLeft: 20, paddingRight: 20
+                }
+            };
+            const html = TemplateEngine.renderBlock(block);
+            if (!html.includes('data-src="https://example.com/lazy-image.jpg"')) {
+                throw new Error('应该包含 data-src 存储真实地址');
+            }
+            if (!html.includes('loading="lazy"')) {
+                throw new Error('应该包含 loading="lazy" 属性');
+            }
+            if (!html.includes('data:image/svg+xml')) {
+                throw new Error('应该包含默认占位图');
+            }
+            if (html.includes('src="https://example.com/lazy-image.jpg"') && !html.includes('data-src="https://example.com/lazy-image.jpg"')) {
+                throw new Error('真实地址不应该直接放在 src 上');
+            }
+            return html;
+        });
+
+        runTest('5. 懒加载+自定义占位图', function() {
+            const block = {
+                type: 'image',
+                data: {
+                    src: 'https://example.com/real.jpg',
+                    alt: '自定义占位图',
+                    width: 100,
+                    align: 'center',
+                    enableLazyLoad: true,
+                    placeholderSrc: 'https://example.com/custom-placeholder.png',
+                    excludeFromLazyLoad: false,
+                    paddingTop: 12, paddingBottom: 12, paddingLeft: 20, paddingRight: 20
+                }
+            };
+            const html = TemplateEngine.renderBlock(block);
+            if (!html.includes('src="https://example.com/custom-placeholder.png"')) {
+                throw new Error('应该使用自定义占位图');
+            }
+            return html;
+        });
+
+        runTest('6. 排除懒加载（追踪像素）', function() {
+            const block = {
+                type: 'image',
+                data: {
+                    src: 'https://example.com/tracker.gif',
+                    alt: '追踪像素',
+                    width: 1,
+                    align: 'center',
+                    enableLazyLoad: true,
+                    placeholderSrc: '',
+                    excludeFromLazyLoad: true,
+                    paddingTop: 0, paddingBottom: 0, paddingLeft: 0, paddingRight: 0
+                }
+            };
+            const html = TemplateEngine.renderBlock(block);
+            if (html.includes('data-src')) {
+                throw new Error('排除的图片不应该有 data-src');
+            }
+            if (html.includes('loading="lazy"')) {
+                throw new Error('排除的图片不应该有 loading="lazy"');
+            }
+            if (!html.includes('src="https://example.com/tracker.gif"')) {
+                throw new Error('应该直接使用真实 src');
+            }
+            return html;
+        });
+
+        runTest('7. hasLazyLoadImages 检测（包含懒加载图片）', function() {
+            const blocks = [
+                { type: 'heading', data: { text: '标题' } },
+                { type: 'image', data: { src: 'a.jpg', enableLazyLoad: true, excludeFromLazyLoad: false } }
+            ];
+            if (!TemplateEngine.hasLazyLoadImages(blocks)) {
+                throw new Error('应该检测到懒加载图片');
+            }
+            return '检测结果: true';
+        });
+
+        runTest('8. hasLazyLoadImages 检测（不含懒加载图片）', function() {
+            const blocks = [
+                { type: 'heading', data: { text: '标题' } },
+                { type: 'image', data: { src: 'a.jpg', enableLazyLoad: false } }
+            ];
+            if (TemplateEngine.hasLazyLoadImages(blocks)) {
+                throw new Error('不应该检测到懒加载图片');
+            }
+            return '检测结果: false';
+        });
+
+        runTest('9. hasLazyLoadImages 检测（多栏布局内）', function() {
+            const blocks = [
+                {
+                    type: 'columns',
+                    data: {
+                        columns: 2,
+                        children: [
+                            { id: 'c1', blocks: [{ type: 'image', data: { src: 'a.jpg', enableLazyLoad: true, excludeFromLazyLoad: false } }] },
+                            { id: 'c2', blocks: [] }
+                        ]
+                    }
+                }
+            ];
+            if (!TemplateEngine.hasLazyLoadImages(blocks)) {
+                throw new Error('应该检测到多栏内的懒加载图片');
+            }
+            return '检测结果: true';
+        });
+
+        runTest('10. 导出完整HTML（包含懒加载脚本）', function() {
+            const blocks = [
+                { type: 'image', data: { src: 'https://example.com/photo.jpg', alt: 'Photo', enableLazyLoad: true, excludeFromLazyLoad: false, width: 100, align: 'center', paddingTop: 12, paddingBottom: 12, paddingLeft: 20, paddingRight: 20 } }
+            ];
+            const html = TemplateEngine.renderFullHtml(blocks);
+            if (!html.includes('<script type="text/javascript">')) {
+                throw new Error('完整HTML应该包含懒加载脚本');
+            }
+            if (!html.includes('IntersectionObserver')) {
+                throw new Error('脚本应该包含 IntersectionObserver 逻辑');
+            }
+            if (!html.includes('data-src="https://example.com/photo.jpg"')) {
+                throw new Error('应该包含懒加载图片标记');
+            }
+            return 'HTML长度: ' + html.length + ' 字符';
+        });
+    </script>
+</body>
+</html>

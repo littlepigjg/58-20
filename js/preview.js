@@ -16,6 +16,23 @@ const PreviewRenderer = (() => {
         doc.open();
         doc.write(html);
         doc.close();
+
+        if (TemplateEngine.hasLazyLoadImages(blocks)) {
+            iframeEl.addEventListener('load', function onLoad() {
+                iframeEl.removeEventListener('load', onLoad);
+                try {
+                    const win = iframeEl.contentWindow;
+                    if (win && typeof win.execLazyLoadScript !== 'function') {
+                        const scriptEl = doc.createElement('script');
+                        scriptEl.type = 'text/javascript';
+                        scriptEl.textContent = TemplateEngine.getLazyLoadScript();
+                        doc.body.appendChild(scriptEl);
+                    }
+                } catch (e) {
+                    console.warn('注入懒加载脚本失败:', e);
+                }
+            });
+        }
     }
 
     function setView(view) {

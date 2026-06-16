@@ -1,10 +1,83 @@
 const TemplateEngine = (() => {
 
+    const DEFAULT_PLACEHOLDER_SVG = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 300" preserveAspectRatio="none">' +
+        '<defs><linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%">' +
+        '<stop offset="0%" style="stop-color:#e5e7eb;stop-opacity:1" />' +
+        '<stop offset="50%" style="stop-color:#d1d5db;stop-opacity:1" />' +
+        '<stop offset="100%" style="stop-color:#e5e7eb;stop-opacity:1" />' +
+        '</linearGradient></defs>' +
+        '<rect width="100%" height="100%" fill="url(#g)" />' +
+        '</svg>'
+    );
+
+    const LAZY_LOAD_SCRIPT = '(function(){' +
+        'var imgs=document.querySelectorAll("img[data-src]");' +
+        'if(!imgs.length)return;' +
+        'if("IntersectionObserver" in window){' +
+        'var io=new IntersectionObserver(function(entries,observer){' +
+        'entries.forEach(function(entry){' +
+        'if(entry.isIntersecting){' +
+        'var img=entry.target;var src=img.getAttribute("data-src");' +
+        'var temp=new Image();temp.onload=function(){' +
+        'img.src=src;img.removeAttribute("data-src");' +
+        'img.removeAttribute("data-lazy-placeholder");observer.unobserve(img);' +
+        '};temp.onerror=function(){' +
+        'img.removeAttribute("data-src");img.removeAttribute("data-lazy-placeholder");' +
+        'if(!img.alt){img.alt="图片加载失败";}' +
+        'observer.unobserve(img);};temp.src=src;' +
+        '}' +
+        '});' +
+        '},{rootMargin:"200px 0px"});' +
+        'imgs.forEach(function(img){io.observe(img);});' +
+        '}else{' +
+        'var timeout;function check(){' +
+        'clearTimeout(timeout);timeout=setTimeout(function(){' +
+        'var scrollTop=window.pageYOffset||document.documentElement.scrollTop;' +
+        'var viewH=window.innerHeight||document.documentElement.clientHeight;' +
+        'imgs.forEach(function(img){' +
+        'if(!img.getAttribute("data-src"))return;' +
+        'var rect=img.getBoundingClientRect();' +
+        'if(rect.top<viewH+200&&rect.bottom>-200){' +
+        'var src=img.getAttribute("data-src");' +
+        'var temp=new Image();temp.onload=function(){' +
+        'img.src=src;img.removeAttribute("data-src");img.removeAttribute("data-lazy-placeholder");' +
+        '};temp.onerror=function(){' +
+        'img.removeAttribute("data-src");img.removeAttribute("data-lazy-placeholder");' +
+        'if(!img.alt){img.alt="图片加载失败";}' +
+        '};temp.src=src;' +
+        '}' +
+        '});},100);' +
+        '}' +
+        'window.addEventListener("scroll",check,{passive:true});' +
+        'window.addEventListener("resize",check,{passive:true});' +
+        'check();' +
+        '}' +
+        '})();';
+
     function escapeHtml(str) {
         if (!str) return '';
         var div = document.createElement('div');
         div.textContent = str;
         return div.innerHTML;
+    }
+
+    function hasLazyLoadImages(blocks) {
+        for (var i = 0; i < blocks.length; i++) {
+            var b = blocks[i];
+            if (b.type === 'image' && b.data && b.data.enableLazyLoad && !b.data.excludeFromLazyLoad) {
+                return true;
+            }
+            if (b.type === 'columns' && b.data && b.data.children) {
+                for (var j = 0; j < b.data.children.length; j++) {
+                    var col = b.data.children[j];
+                    if (col.blocks && hasLazyLoadImages(col.blocks)) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
     }
 
     function paddingStyle(d) {
@@ -50,8 +123,16 @@ const TemplateEngine = (() => {
         var alt = escapeHtml(d.alt || '');
         var href = d.href ? escapeHtml(d.href) : '';
         var style = paddingStyle(d);
+        var useLazy = d.enableLazyLoad && !d.excludeFromLazyLoad;
 
-        var imgHtml = '<img src="' + src + '" alt="' + alt + '" style="display:block;max-width:100%;width:' + width + '%;height:auto;border:0;outline:none;text-decoration:none;" width="' + width + '%" />';
+        var imgHtml;
+        if (useLazy) {
+            var placeholderSrc = d.placeholderSrc ? escapeHtml(d.placeholderSrc) : DEFAULT_PLACEHOLDER_SVG;
+            imgHtml = '<img src="' + placeholderSrc + '" data-src="' + src + '" data-lazy-placeholder="true" loading="lazy" alt="' + alt + '" style="display:block;max-width:100%;width:' + width + '%;height:auto;border:0;outline:none;text-decoration:none;" width="' + width + '%" />';
+        } else {
+            imgHtml = '<img src="' + src + '" alt="' + alt + '" style="display:block;max-width:100%;width:' + width + '%;height:auto;border:0;outline:none;text-decoration:none;" width="' + width + '%" />';
+        }
+
         if (href) {
             imgHtml = '<a href="' + href + '" target="_blank" style="text-decoration:none;">' + imgHtml + '</a>';
         }
@@ -157,6 +238,10 @@ const TemplateEngine = (() => {
         var contentBgColor = options.contentBgColor || '#ffffff';
         var title = options.title || '邮件模板';
         var year = new Date().getFullYear();
+        var needLazyScript = hasLazyLoadImages(blocks);
+        var scriptTag = needLazyScript
+            ? '    <script type="text/javascript">\n' + LAZY_LOAD_SCRIPT + '\n    </script>\n'
+            : '';
 
         return '<!DOCTYPE html>\n' +
 '<html lang="zh-CN" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">\n' +
@@ -212,6 +297,7 @@ const TemplateEngine = (() => {
 '            </td>\n' +
 '        </tr>\n' +
 '    </table>\n' +
+    scriptTag +
 '</body>\n' +
 '</html>';
     }
@@ -263,6 +349,9 @@ const TemplateEngine = (() => {
         renderFullHtml: renderFullHtml,
         renderBody: renderBody,
         renderBlock: renderBlock,
-        renderEditorBlock: renderEditorBlock
+        renderEditorBlock: renderEditorBlock,
+        getLazyLoadScript: function() { return LAZY_LOAD_SCRIPT; },
+        getDefaultPlaceholder: function() { return DEFAULT_PLACEHOLDER_SVG; },
+        hasLazyLoadImages: hasLazyLoadImages
     };
 })();
